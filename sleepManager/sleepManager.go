@@ -1,6 +1,7 @@
 package sleepManager
 
 import "time"
+import "fmt"
 
 type Event int
 type EventChannel chan Event
@@ -12,19 +13,20 @@ const (
 	ERROR
 )
 
-const SLEEP_DURATION_MAX = uint(60)
-const SLEEP_DURATION_INITIAL = uint(1)
-
 type SleepManager struct {
-	EventChannel  EventChannel
-	sleepDuration uint
-	sleepNow      SleepDurationRequestChannel // reports how long to sleep now
+	EventChannel         EventChannel
+	sleepDuration        uint
+	sleepDurationMax     uint
+	sleepDurationInitial uint
+	sleepNow             SleepDurationRequestChannel // reports how long to sleep now
 }
 
-func NewSleepManager() *SleepManager {
+func NewSleepManager(initial, max uint) *SleepManager {
 	ans := new(SleepManager)
 	ans.EventChannel = make(EventChannel)
-	ans.sleepDuration = SLEEP_DURATION_INITIAL
+	ans.sleepDurationInitial = initial
+	ans.sleepDurationMax = max
+	ans.sleepDuration = initial
 	ans.sleepNow = make(SleepDurationRequestChannel)
 
 	go func() {
@@ -33,11 +35,11 @@ func NewSleepManager() *SleepManager {
 			case event := <-ans.EventChannel:
 				switch event {
 				case SUCCESS:
-					ans.sleepDuration = SLEEP_DURATION_INITIAL
+					ans.sleepDuration = ans.sleepDurationInitial
 				case ERROR:
 					ans.sleepDuration = ans.sleepDuration << 1 // sleep twice as long
-					if ans.sleepDuration > SLEEP_DURATION_MAX {
-						ans.sleepDuration = SLEEP_DURATION_MAX
+					if ans.sleepDuration > ans.sleepDurationMax {
+						ans.sleepDuration = ans.sleepDurationMax
 					}
 				}
 			case n := <-ans.sleepNow:
@@ -65,7 +67,9 @@ func (sm *SleepManager) Sleep() {
 	sm.sleepNow <- howLong
 
 	// block until duration (found by reading howLong channel) has expired
-	<-time.After(time.Duration(<-howLong) * time.Second)
+	dur := <-howLong
+	fmt.Printf("sleeping for %+v second(s)...\n", dur)
+	<-time.After(time.Duration(dur) * time.Second)
 
 	// remove howLong channel
 	close(howLong)
