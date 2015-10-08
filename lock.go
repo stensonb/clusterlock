@@ -1,6 +1,13 @@
 // TODO: remove * on interfaces in struct defs
 // - shutdown options for goroutines
 
+// distributed lock manager, using etcd
+// provides a cluster-level "lock" which
+// can be used when a cluster-level singleton
+// is required.
+// by default, loss of communication with etcd
+// causes the lock manager to release the lock
+
 package main
 
 import (
@@ -9,130 +16,15 @@ import (
 	"fmt"
 	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/coreos/etcd/client"
+//	"github.com/stensonb/lockplay/retryproxy"
+retryproxy "github.com/stensonb/lockplay/retryproxyagain"
 	"os"
-	"runtime"
+	//"runtime"
 	"sync"
 	"time"
 )
 
 const LOCK_TTL = 10 * time.Second
-
-type Breaker bool
-
-const CLOSED = true // allow traffic to flow
-const OPEN = false  // prevent traffic from flowing
-
-type EtcdClientRetryProxy struct {
-	keysAPI          client.KeysAPI
-	breaker          Breaker
-	breakerMutex     sync.RWMutex
-	breakerChan      chan bool
-	wait_seconds     uint64
-	max_wait_seconds uint64
-}
-
-func NewEtcdClientRetryProxy(c client.Client) *EtcdClientRetryProxy {
-	ans := new(EtcdClientRetryProxy)
-	ans.keysAPI = client.NewKeysAPI(c)
-	ans.breaker = CLOSED
-	ans.breakerChan = make(chan bool, 1)
-	ans.wait_seconds = 1              // on fail, start waiting 1 second
-	ans.max_wait_seconds = uint64(60) // TODO: make this configurable?
-	return ans
-}
-
-func (ecrp *EtcdClientRetryProxy) EtcdAvailable() Breaker {
-	ecrp.breakerMutex.RLock()
-	defer ecrp.breakerMutex.RUnlock()
-	return ecrp.breaker
-}
-
-func (ecrp *EtcdClientRetryProxy) setBreaker(b Breaker) {
-	ecrp.breakerMutex.Lock()
-	defer ecrp.breakerMutex.Unlock()
-	ecrp.breaker = b
-}
-
-func (ecrp *EtcdClientRetryProxy) Retry(fn func()(*client.Response, error)) (*client.Response, error) {
-	var ans *client.Response
-	var err error
-	var sleep uint64 = 1
-
-  for ans, err = fn(); err != nil && err.Error() == client.ErrClusterUnavailable.Error(); ans, err = fn() {
-		fmt.Printf("sleeping for %+v second(s)...\n", sleep)
-		time.Sleep(time.Duration(sleep) * time.Second)
-		fmt.Println("awake!")
-		sleep = sleep << 1 //sleep twice as long next time
-		if sleep > ecrp.max_wait_seconds {
-			sleep = ecrp.max_wait_seconds
-		}
-	}
-
-  return ans, err
-}
-
-
-func (ecrp *EtcdClientRetryProxy) Get(ctx context.Context, key string, opts *client.GetOptions) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.Get(ctx, key, opts) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) Set(ctx context.Context, key, value string, opts *client.SetOptions) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.Set(ctx, key, value, opts) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) Delete(ctx context.Context, key string, opts *client.DeleteOptions) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.Delete(ctx, key, opts) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) Create(ctx context.Context, key, value string) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.Create(ctx, key, value) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) CreateInOrder(ctx context.Context, dir, value string, opts *client.CreateInOrderOptions) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.CreateInOrder(ctx, dir, value, opts) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) Update(ctx context.Context, key, value string) (*client.Response, error) {
-  return ecrp.Retry(func() (*client.Response, error) { return ecrp.keysAPI.Update(ctx, key, value) } )
-}
-
-func (ecrp *EtcdClientRetryProxy) Watcher(key string, opts *client.WatcherOptions) client.Watcher {
-	return ecrp.NewWatcherProxy(key, opts)
-}
-
-type WatcherProxy struct {
-	watcher          client.Watcher
-	ecrp             *EtcdClientRetryProxy
-	max_wait_seconds uint64
-	watcherSleep uint64
-}
-
-func (ecrp *EtcdClientRetryProxy) NewWatcherProxy(key string, opts *client.WatcherOptions) *WatcherProxy {
-	ans := new(WatcherProxy)
-	ans.watcher = ecrp.keysAPI.Watcher(key, opts)
-	ans.ecrp = ecrp
-	ans.max_wait_seconds = 60 // TODO: customizable?
-	ans.watcherSleep = 0
-	return ans
-}
-
-func (wp *WatcherProxy) Next(ctx context.Context) (*client.Response, error) {
-	if wp.watcherSleep > 0 {
-		time.Sleep(time.Duration(wp.watcherSleep) * time.Second)
-		wp.watcherSleep = wp.watcherSleep << 1  // sleep twice as long next time
-		if wp.watcherSleep > wp.max_wait_seconds {
-			wp.watcherSleep = wp.max_wait_seconds
-		}
-		return wp.watcher.Next(ctx)
-	}
-
-	ans, err := wp.watcher.Next(ctx)
-	if err != nil {
-		wp.watcherSleep = 1
-	}
-
-	return ans, err
-}
 
 func main() {
 	cfg := client.Config{
@@ -143,7 +35,7 @@ func main() {
 	}
 	c, _ := client.New(cfg)
 
-	ecrp := NewEtcdClientRetryProxy(c) //client.NewKeysAPI(c)
+	ecrp := retryproxy.NewEtcdClientRetryProxy(c) //client.NewKeysAPI(c)
 
 	path := "/foo/lock"
 	lm := NewLockManager(ecrp, path)
@@ -152,11 +44,10 @@ func main() {
 		fmt.Printf("Have Lock: %t\n", lm.HaveLock())
 		time.Sleep(time.Second)
 	}
-
 }
 
 type LockManager struct {
-	ecrp                   *EtcdClientRetryProxy //client.KeysAPI
+	ecrp                   *retryproxy.EtcdClientRetryProxy //client.KeysAPI
 	path                   string
 	id                     string
 	lockStatusMutex        sync.RWMutex
@@ -168,7 +59,8 @@ type LockManager struct {
 	lockKeeperRunningMutex sync.RWMutex
 }
 
-func NewLockManager(ecrp *EtcdClientRetryProxy, path string) *LockManager {
+func NewLockManager(ecrp *retryproxy.EtcdClientRetryProxy, path string) *LockManager {
+	// initialization
 	ans := new(LockManager)
 	ans.ecrp = ecrp
 	ans.path = path
@@ -180,10 +72,26 @@ func NewLockManager(ecrp *EtcdClientRetryProxy, path string) *LockManager {
 
 	fmt.Println("Lock ID:", ans.id)
 
+  //go ans.etcdWatcher()
 	go ans.watchLock()
 	go ans.lockGetter()
 
 	return ans
+}
+
+// sole purpose is to watch etcd
+// when it becomes in accessible, report it
+func (lm *LockManager) etcdWatcher() {
+	/*
+	for {
+	  w := (*(lm.ecrp)).Watcher(lm.path, nil)
+
+  	fmt.Println("monitoring etcd:", lm.path)
+  	for {
+  		resp, err := w.Next(context.Background())
+		}
+	}
+	*/
 }
 
 func (lm *LockManager) HaveLock() bool {
@@ -193,9 +101,7 @@ func (lm *LockManager) HaveLock() bool {
 }
 
 func (lm *LockManager) Shutdown() {
-	buf := make([]byte, 1<<20)
-	runtime.Stack(buf, true)
-	fmt.Printf("=== received SIGQUIT ===\n*** goroutine dump...\n%s\n*** end\n", buf)
+	// TODO: exit the goroutines, remove the lock
 }
 
 func (lm *LockManager) getCurIndex() uint64 {
