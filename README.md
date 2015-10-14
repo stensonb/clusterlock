@@ -45,9 +45,9 @@ if lm.HaveLock() {
 * when etcd is unavailable, HaveLock()==false
 * lock is maintained by a single host ; and TTL periodically updated
 * self-healing
-**if a single instance dies, the lock’s TTL will expire and other instances will fight for lock
-**if etcd fails, lock is immediately rescinded from all instances
-**if the lock in etcd is removed, all instances will fight for lock
+  * if a single instance dies, the lock’s TTL will expire and other instances will fight for lock
+  * if etcd fails, lock is immediately rescinded from all instances
+  * if the lock in etcd is removed, all instances will fight for lock
 
 # help me
 if see a problem with this, please open an issue, or submit a PR...
