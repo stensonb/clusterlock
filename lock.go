@@ -15,7 +15,6 @@ import (
 	"code.google.com/p/go-uuid/uuid"
 	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/coreos/etcd/client"
-	"github.com/stensonb/clusterlock/retryproxy"
 )
 
 type lockEvent int
@@ -27,7 +26,7 @@ const (
 )
 
 type LockManager struct {
-	ecrp               *retryproxy.EtcdClientRetryProxy
+	ecrp               client.KeysAPI
 	ecrpErrorChan      chan error
 	path               string
 	id                 string
@@ -52,7 +51,8 @@ func (lm *LockManager) Shutdown() {
 	}
 }
 
-func NewLockManager(ecrp *retryproxy.EtcdClientRetryProxy, ec chan error, path string, ttl time.Duration) *LockManager {
+//func NewLockManager(ecrp *retryproxy.EtcdClientRetryProxy, ec chan error, path string, ttl time.Duration) *LockManager {
+func NewLockManager(ecrp client.KeysAPI, ec chan error, path string, ttl time.Duration) *LockManager {
 	// initialization
 	ans := new(LockManager)
 	ans.ecrp = ecrp
@@ -180,7 +180,7 @@ func (l *lock) Release() {
 func (lm *LockManager) readLock() (string, error) {
 	// read lock entry in etcd
 	opts := client.GetOptions{Quorum: true}
-	resp, err := (*(lm.ecrp)).Get(context.Background(), lm.path, &opts)
+	resp, err := lm.ecrp.Get(context.Background(), lm.path, &opts)
 
 	// if lock missing, return err
 	if err != nil {
@@ -194,7 +194,7 @@ func (lm *LockManager) createLock() error {
 	// write lm.id to lm.path with lm.lockTTL in etcd,
 	// ensuring there is no previous value
 	opts := client.SetOptions{TTL: lm.lockTTL, PrevExist: client.PrevNoExist}
-	_, err := (*(lm.ecrp)).Set(context.Background(), lm.path, lm.id, &opts)
+	_, err := lm.ecrp.Set(context.Background(), lm.path, lm.id, &opts)
 	return err
 }
 
@@ -213,7 +213,7 @@ func (lm *LockManager) ecrpErrorChannelHandler() {
 
 func (lm *LockManager) lockWatcher() {
 	// start a watcher on the lock
-	w := (*(lm.ecrp)).Watcher(lm.path, nil)
+	w := lm.ecrp.Watcher(lm.path, nil)
 
 	fmt.Println("watching:", lm.path)
 	for {
@@ -278,7 +278,7 @@ func (lk *lockKeeper) updateTTL() error {
 	// set the ttl, ensuring the lock already exists
 	// and that verify PrevIndex is what we expect
 	opts := client.SetOptions{TTL: lk.l.lm.lockTTL, PrevValue: lk.l.lm.id, PrevExist: client.PrevExist, PrevIndex: lk.curIndex}
-	resp, err := (*(lk.l.lm.ecrp)).Set(context.Background(), lk.l.lm.path, lk.l.lm.id, &opts)
+	resp, err := lk.l.lm.ecrp.Set(context.Background(), lk.l.lm.path, lk.l.lm.id, &opts)
 	if err != nil {
 		return err
 	}
