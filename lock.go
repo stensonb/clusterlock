@@ -15,6 +15,8 @@ import (
 	"code.google.com/p/go-uuid/uuid"
 	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/coreos/etcd/client"
+
+	"github.com/stensonb/clusterlock/retryproxy"
 )
 
 type lockEvent int
@@ -51,12 +53,19 @@ func (lm *LockManager) Shutdown() {
 	}
 }
 
-//func NewLockManager(ecrp *retryproxy.EtcdClientRetryProxy, ec chan error, path string, ttl time.Duration) *LockManager {
-func NewLockManager(ecrp client.KeysAPI, ec chan error, path string, ttl time.Duration) *LockManager {
+func NewLockManager(kapi client.KeysAPI, path string, ttl time.Duration) *LockManager {
 	// initialization
 	ans := new(LockManager)
-	ans.ecrp = ecrp
-	ans.ecrpErrorChan = ec
+	ans.ecrp = kapi
+
+	// if it's a retryproxy.EtcdClientRetryProxy, set the error channel
+	switch kapi := kapi.(type) {
+	case *retryproxy.EtcdClientRetryProxy:
+		ans.ecrpErrorChan = kapi.ErrorChan
+	default:
+		ans.ecrpErrorChan = nil
+	}
+
 	ans.path = path
 	ans.lockTTL = ttl
 	ans.lockStatusQuery = make(chan chan bool)
@@ -85,7 +94,7 @@ func (lm *LockManager) lockEventHandler() {
 			switch evt {
 			case ACQUIRED:
 				lm.lockStatus = true
-				lm.lock = lm.NewLock() // if acquired in etcd, create the data locally (and start ttlupdater, etc)
+				lm.lock = lm.newLock() // if acquired in etcd, create the data locally (and start ttlupdater, etc)
 			case REMOVED, UNKNOWN:
 				lm.lockStatus = false
 				if lm.lock != nil {
@@ -162,7 +171,7 @@ type lock struct {
 	lockKeeper   *lockKeeper
 }
 
-func (lm *LockManager) NewLock() *lock {
+func (lm *LockManager) newLock() *lock {
 	ans := new(lock)
 	ans.lm = lm
 	ans.eventChannel = make(chan lockEvent)

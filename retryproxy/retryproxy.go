@@ -11,7 +11,7 @@ import (
 type EtcdClientRetryProxy struct {
 	keysAPI        client.KeysAPI
 	sm             *sleepManager.SleepManager
-	errorChan      chan error
+	ErrorChan      chan error
 	quitChannel    chan interface{}
 	ourQuitChannel bool
 }
@@ -27,7 +27,7 @@ func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint)
 	// a goroutine to drain the channel
 	if ec == nil {
 		r := make(chan error)
-		ans.errorChan = r
+		ans.ErrorChan = r
 		ans.ourQuitChannel = true
 
 		// drain the channel, as needed
@@ -42,7 +42,7 @@ func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint)
 		}()
 
 	} else {
-		ans.errorChan = ec
+		ans.ErrorChan = ec
 	}
 
 	ans.quitChannel = make(chan interface{})
@@ -64,7 +64,7 @@ func (ecrp *EtcdClientRetryProxy) Retry(fn func() (*client.Response, error)) (*c
 	// if fn() fails due to ErrClusterUnavailable, retry
 	for ans, err = fn(); err != nil && err.Error() == client.ErrClusterUnavailable.Error(); ans, err = fn() {
 		go ecrp.sm.Error() // non-blocking
-		ecrp.errorChan <- err
+		ecrp.ErrorChan <- err
 		fmt.Println(err)
 		ecrp.sm.Sleep()
 	}

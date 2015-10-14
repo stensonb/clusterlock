@@ -35,7 +35,7 @@ func TestLockManager(t *testing.T) {
 	path += uuid.New()
 	ttl := LockTTL
 
-	lm := NewLockManager(ecrp, ecrpErrorChan, path, ttl)
+	lm := NewLockManager(ecrp, path, ttl)
 	defer lm.Shutdown()
 
 	closeit := time.After(10 * time.Second)

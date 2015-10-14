@@ -19,16 +19,16 @@ cfg := client.Config{
 }
 c, _ := client.New(cfg)
 
-ecrpErrorChan := make(chan error)
-ecrp := retryproxy.NewEtcdClientRetryProxy(c, ecrpErrorChan, 1, 60)
-path := "some-path-in-etcd" // the path in etcd where you want the lock to be stored
+kapi := client.NewKeysAPI(c)  // the etcd client
+lockPath := "some-path-in-etcd" // the path in etcd where you want the lock to be stored
 
 // the lockttl, in seconds
 // a value too low increases network/etcd chatter
 // a value too high results in longer periods of a "lockless" cluster
-ttl := LockTTL
+// for example, when the previous lock owner dies and fails to cleanup
+ttl := 60 * time.Second
 
-lm := clusterlock.NewLockManager(ecrp, ecrpErrorChan, path, ttl)
+lm := clusterlock.NewLockManager(kapi, lockPath, ttl)
 defer lm.Shutdown()  // let us clean-up the internals (ttlupdater, etc)
 
 // now we can poll the LockManager to see if we have the lock:
@@ -44,6 +44,7 @@ if lm.HaveLock() {
 * retry logic built-in to all etcd calls (if using the accompanying ```retryproxy``` package)
 * pessimistic when etcd is unavailable, HaveLock()==false
 * lock is maintained by a single host ; and TTL periodically updated
+* lock value is a combination of hostname() and random uuid() (which is NOT persisted between service restarts)
 * self-healing
   * if a single instance dies, the lock’s TTL will expire and other instances will fight for lock
   * if etcd fails, lock is immediately rescinded from all instances
