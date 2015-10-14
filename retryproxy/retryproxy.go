@@ -9,17 +9,18 @@ import (
 )
 
 type EtcdClientRetryProxy struct {
-	keysAPI        client.KeysAPI
-	sm             *sleepManager.SleepManager
-	ErrorChan      chan error
-	quitChannel    chan interface{}
-	ourQuitChannel bool
+	keysAPI         client.KeysAPI
+	sm              *sleepManager.SleepManager
+	ErrorChan       chan error
+	ourErrorChannel bool
+	quitChannel     chan interface{}
 }
 
 // if you don't want to be notified when the retry proxy needs to retry, pass ec=nil
 func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint) *EtcdClientRetryProxy {
 	ans := new(EtcdClientRetryProxy)
 	ans.keysAPI = client.NewKeysAPI(c)
+	ans.quitChannel = make(chan interface{})
 	ans.sm = sleepManager.NewSleepManager(min, max)
 
 	// the user doesn't care about retries,
@@ -28,7 +29,7 @@ func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint)
 	if ec == nil {
 		r := make(chan error)
 		ans.ErrorChan = r
-		ans.ourQuitChannel = true
+		ans.ourErrorChannel = true
 
 		// drain the channel, as needed
 		go func() {
@@ -45,14 +46,12 @@ func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint)
 		ans.ErrorChan = ec
 	}
 
-	ans.quitChannel = make(chan interface{})
-
 	return ans
 }
 
 func (ecrp *EtcdClientRetryProxy) Shutdown() {
 	ecrp.sm.Shutdown()
-	if ecrp.ourQuitChannel {
+	if ecrp.ourErrorChannel {
 		close(ecrp.quitChannel)
 	}
 }
