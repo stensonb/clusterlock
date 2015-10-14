@@ -15,7 +15,13 @@ then, create a retryproxy instead of the etcd keysAPI:
 // 1. if you don't want to be notified when the retry proxy needs to retry, pass ec=nil
 // 2. if you want to follow when the retry client had to retry, pass an error channel via ec
 // NOTE: be sure to read from the error channel (ec), otherwise, you will block the retry
-ecrp := retryproxy.NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint)
+// min uint ; the shortest amount of time to wait (in seconds) on failure
+// max uint ; the longest amount of time to wait (in seconds) on failure
+c, _ := client.New(cfg)  // a new etcd client
+var ec chan error = nil
+min := uint(1)
+max := uint(60)
+ecrp := retryproxy.NewEtcdClientRetryProxy(c, ec, min, max)
 
 // now, use the ecrp just as you would a client.KeysAPI from etcd
 // read value from etcd
@@ -29,3 +35,4 @@ resp, err := ecrp.Get(context.Background(), somepath, &opts)
 * ANY successful etcd call results in a removal of all wait times for all other etcd calls
 * error channel to monitor each retry
 * support a range minimum and maximum wait times before trying again
+* failed etcd calls roughly double the next call's wait time
