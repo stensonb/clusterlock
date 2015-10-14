@@ -33,6 +33,6 @@ resp, err := ecrp.Get(context.Background(), somepath, &opts)
 
 * client.ErrClusterUnavailable errors from ANY call results in an increase in wait time before trying again
 * ANY successful etcd call results in a removal of all wait times for all other etcd calls
-* error channel to monitor each retry
+* an optional error channel to monitor each retry
 * support a range minimum and maximum wait times before trying again
 * failed etcd calls roughly double the next call's wait time
