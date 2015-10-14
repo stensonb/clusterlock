@@ -41,8 +41,8 @@ if lm.HaveLock() {
 
 ## features
 * HA (run multiple, and only one will return HaveLock()==true)
-* retry logic built-in to all etcd calls
-* when etcd is unavailable, HaveLock()==false
+* retry logic built-in to all etcd calls (if using the accompanying ```retryproxy``` package)
+* pessimistic when etcd is unavailable, HaveLock()==false
 * lock is maintained by a single host ; and TTL periodically updated
 * self-healing
   * if a single instance dies, the lock’s TTL will expire and other instances will fight for lock
