@@ -12,6 +12,7 @@ func diff(t1, t2 time.Time) uint {
 }
 
 func TestSleepManager(t *testing.T) {
+	t.Parallel()
 	min := uint(1)
 	max := uint(60)
 	sm := NewSleepManager(min, max)
@@ -27,6 +28,7 @@ func TestSleepManager(t *testing.T) {
 }
 
 func TestErrorCondition(t *testing.T) {
+	t.Parallel()
 	min := uint(1)
 	max := uint(60)
 	sm := NewSleepManager(min, max)
@@ -47,6 +49,7 @@ func TestErrorCondition(t *testing.T) {
 }
 
 func TestMaxSleep(t *testing.T) {
+	t.Parallel()
 	min := uint(1)
 	max := uint(2)
 	sm := NewSleepManager(min, max)
@@ -68,6 +71,7 @@ func TestMaxSleep(t *testing.T) {
 }
 
 func TestSuccess(t *testing.T) {
+	t.Parallel()
 	min := uint(1)
 	max := uint(60)
 	sm := NewSleepManager(min, max)
@@ -92,6 +96,7 @@ func TestSuccess(t *testing.T) {
 }
 
 func TestOpenClose(t *testing.T) {
+	t.Parallel()
 	for i := 0; i < 100; i++ {
 		sm := NewSleepManager(1, 60)
 		sm.Shutdown()
@@ -99,6 +104,7 @@ func TestOpenClose(t *testing.T) {
 }
 
 func TestInterruptSleep(t *testing.T) {
+	t.Parallel()
 	min := uint(1)
 	max := uint(60)
 	sm := NewSleepManager(min, max)

@@ -76,7 +76,7 @@ func (sm *SleepManager) Sleep() {
 	// by placing the howLong channel in sleepNow
 	select {
 	case sm.sleepNow <- howLong:
-	case <-sm.quitChannel:  // return if the quitChannel is closed
+	case <-sm.quitChannel: // return if the quitChannel is closed
 		return
 	}
 

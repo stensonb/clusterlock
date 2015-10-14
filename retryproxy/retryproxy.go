@@ -2,28 +2,59 @@ package retryproxy
 
 import (
 	"fmt"
+
 	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/coreos/etcd/client"
-	"github.com/stensonb/lockplay/sleepManager"
+	"github.com/stensonb/clusterlock/sleepManager"
 )
 
 type EtcdClientRetryProxy struct {
-	keysAPI   client.KeysAPI
-	sm        *sleepManager.SleepManager
-	errorChan chan error
+	keysAPI        client.KeysAPI
+	sm             *sleepManager.SleepManager
+	errorChan      chan error
+	quitChannel    chan interface{}
+	ourQuitChannel bool
 }
 
-func NewEtcdClientRetryProxy(c client.Client, ec chan error) *EtcdClientRetryProxy {
+// if you don't want to be notified when the retry proxy needs to retry, pass ec=nil
+func NewEtcdClientRetryProxy(c client.Client, ec chan error, min uint, max uint) *EtcdClientRetryProxy {
 	ans := new(EtcdClientRetryProxy)
 	ans.keysAPI = client.NewKeysAPI(c)
-	ans.sm = sleepManager.NewSleepManager(1, 60)
-	ans.errorChan = ec
+	ans.sm = sleepManager.NewSleepManager(min, max)
+
+	// the user doesn't care about retries,
+	// so create an error channel and create
+	// a goroutine to drain the channel
+	if ec == nil {
+		r := make(chan error)
+		ans.errorChan = r
+		ans.ourQuitChannel = true
+
+		// drain the channel, as needed
+		go func() {
+			for {
+				select {
+				case <-r:
+				case <-ans.quitChannel:
+					return
+				}
+			}
+		}()
+
+	} else {
+		ans.errorChan = ec
+	}
+
+	ans.quitChannel = make(chan interface{})
 
 	return ans
 }
 
 func (ecrp *EtcdClientRetryProxy) Shutdown() {
 	ecrp.sm.Shutdown()
+	if ecrp.ourQuitChannel {
+		close(ecrp.quitChannel)
+	}
 }
 
 func (ecrp *EtcdClientRetryProxy) Retry(fn func() (*client.Response, error)) (*client.Response, error) {

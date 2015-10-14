@@ -1,6 +1,3 @@
-// TODO: remove * on interfaces in struct defs
-// - shutdown options for goroutines
-
 // distributed lock manager, using etcd
 // provides a cluster-level "lock" which
 // can be used when a cluster-level singleton
@@ -8,16 +5,17 @@
 // by default, loss of communication with etcd
 // causes the lock manager to release the lock
 
-package lock
+package clusterlock
 
 import (
-	"code.google.com/p/go-uuid/uuid"
 	"fmt"
-	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/coreos/etcd/client"
-	"github.com/stensonb/lockplay/retryproxy"
 	"os"
 	"time"
+
+	"code.google.com/p/go-uuid/uuid"
+	"github.com/coreos/etcd/Godeps/_workspace/src/golang.org/x/net/context"
+	"github.com/coreos/etcd/client"
+	"github.com/stensonb/clusterlock/retryproxy"
 )
 
 type lockEvent int
@@ -49,7 +47,6 @@ func (lm *LockManager) Shutdown() {
 	close(lm.lockEvent)
 	close(lm.needLock)
 
-	// TODO: if we have a lock, release it
 	if lm.lock != nil {
 		lm.lock.Release()
 	}
