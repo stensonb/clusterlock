@@ -35,7 +35,7 @@ defer lm.Shutdown()  // let us clean-up the internals (ttlupdater, etc)
 if lm.HaveLock() {
   // do something cluster-level, as we're now guaranteed
   // to be the only instance of this library with the lock
-  // path specified in etcd
+  // path specified in etcd across all VMs, containers, instances, etc
 }
 ```
 
