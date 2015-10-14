@@ -1,6 +1,6 @@
 # retryproxy
 
-an etcd retry client which retries against etcd when required
+an [etcd](http://etcd.io) retry client which retries against etcd when required
 
 # how to use
 
