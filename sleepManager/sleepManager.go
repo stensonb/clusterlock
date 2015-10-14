@@ -19,15 +19,17 @@ type SleepManager struct {
 	sleepDurationMax     uint
 	sleepDurationInitial uint
 	sleepNow             SleepDurationRequestChannel // reports how long to sleep now
+	quitChannel          chan interface{}            // channel used to signal when to exit
 }
 
-func NewSleepManager(initial, max uint) *SleepManager {
+func NewSleepManager(initial uint, max uint) *SleepManager {
 	ans := new(SleepManager)
 	ans.EventChannel = make(EventChannel)
 	ans.sleepDurationInitial = initial
 	ans.sleepDurationMax = max
 	ans.sleepDuration = initial
 	ans.sleepNow = make(SleepDurationRequestChannel)
+	ans.quitChannel = make(chan interface{})
 
 	go func() {
 		for {
@@ -37,18 +39,24 @@ func NewSleepManager(initial, max uint) *SleepManager {
 				case SUCCESS:
 					ans.sleepDuration = ans.sleepDurationInitial
 				case ERROR:
-					ans.sleepDuration = ans.sleepDuration << 1 // sleep twice as long
+					ans.sleepDuration <<= 1 // sleep twice as long by bit-shifting 1
 					if ans.sleepDuration > ans.sleepDurationMax {
 						ans.sleepDuration = ans.sleepDurationMax
 					}
 				}
 			case n := <-ans.sleepNow:
 				n <- ans.sleepDuration
+			case <-ans.quitChannel:
+				return
 			}
 		}
 	}()
 
 	return ans
+}
+
+func (sm *SleepManager) Shutdown() {
+	close(sm.quitChannel)
 }
 
 func (sm *SleepManager) Error() {
@@ -61,16 +69,22 @@ func (sm *SleepManager) Success() {
 
 func (sm *SleepManager) Sleep() {
 	howLong := make(SleepDurationChannel) // a response channel containing ans.sleepDuration
+	// remove howLong channel
+	defer close(howLong)
 
 	// ask for the current sleep duration
 	// by placing the howLong channel in sleepNow
-	sm.sleepNow <- howLong
+	select {
+	case sm.sleepNow <- howLong:
+	case <-sm.quitChannel:  // return if the quitChannel is closed
+		return
+	}
 
 	// block until duration (found by reading howLong channel) has expired
 	dur := <-howLong
 	fmt.Printf("sleeping for %+v second(s)...\n", dur)
-	<-time.After(time.Duration(dur) * time.Second)
-
-	// remove howLong channel
-	close(howLong)
+	select {
+	case <-time.After(time.Duration(dur) * time.Second): // either time will elapse
+	case <-sm.quitChannel: // or, our quitChannel will be closed
+	}
 }
