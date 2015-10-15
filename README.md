@@ -1,4 +1,4 @@
-# clusterlock
+# clusterlock ![travis-ci-status](https://travis-ci.org/stensonb/clusterlock.svg?branch=master)
 
 a cluster-level lock manager, backed by [etcd](http://etcd.io)
 
